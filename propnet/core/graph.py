@@ -610,7 +610,7 @@ class Graph(object):
         if found:
             return depth_count
         if not found:
-            return -1
+            return None
 
     @staticmethod
     def generate_input_sets(props, this_quantity_pool):
