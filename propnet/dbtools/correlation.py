@@ -119,33 +119,35 @@ class CorrelationBuilder(Builder):
 
             x_unit = Registry("units")[prop_x]
             y_unit = Registry("units")[prop_y]
-            x = []
-            y = []
+            data = defaultdict(list)
             for material in pn_data:
                 # Collect all data with units for this material
                 # and calculate the mean, convert units, store magnitude of mean
-                qs_of_x = \
-                    [ureg.Quantity(q['value'], q['units'])
-                     for q in material['inputs']
-                     if q['symbol_type'] == prop_x] + \
-                    [ureg.Quantity(q['value'], q['units'])
-                     for q in material[prop_x]['quantities']]
-                x_mean = sum(qs_of_x) / len(qs_of_x)
-                x.append(x_mean.to(x_unit).magnitude)
+                if prop_x == prop_y:
+                    # This is to avoid duplicating the work and the data
+                    props = (prop_x,)
+                    units = (x_unit,)
+                else:
+                    props = (prop_x, prop_y)
+                    units = (x_unit, y_unit)
+                for prop, unit in zip(props, units):
+                    qs = [ureg.Quantity(q['value'], q['units'])
+                          for q in material['inputs']
+                          if q['symbol_type'] == prop]
+                    if prop in material:
+                        qs.extend([ureg.Quantity(q['value'], q['units'])
+                                   for q in material[prop]['quantities']])
 
-                qs_of_y = \
-                    [ureg.Quantity(q['value'], q['units'])
-                     for q in material['inputs']
-                     if q['symbol_type'] == prop_y] + \
-                    [ureg.Quantity(q['value'], q['units'])
-                     for q in material[prop_y]['quantities']]
-                y_mean = sum(qs_of_y) / len(qs_of_y)
-                y.append(y_mean.to(y_unit).magnitude)
+                    if len(qs) == 0:
+                        raise ValueError("Query for property {} gave no results"
+                                         "".format(prop))
+                    prop_mean = sum(qs) / len(qs)
+                    data[prop].append(prop_mean.to(unit).magnitude)
 
             for name, func in self._funcs.items():
-                data_dict = {'x_data': x,
+                data_dict = {'x_data': data[prop_x],
                              'x_name': prop_x,
-                             'y_data': y,
+                             'y_data': data[prop_y],
                              'y_name': prop_y,
                              'func': (name, func)}
                 yield data_dict
@@ -176,15 +178,8 @@ class CorrelationBuilder(Builder):
         n_points = len(data_x)
 
         g = Graph()
-        try:
-            path_length_xy = g.get_degree_of_separation(prop_x, prop_y)
-        except ValueError:
-            path_length_xy = None
-
-        try:
-            path_length_yx = g.get_degree_of_separation(prop_y, prop_x)
-        except ValueError:
-            path_length_yx = None
+        path_length_xy = g.get_degree_of_separation(prop_x, prop_y)
+        path_length_yx = g.get_degree_of_separation(prop_y, prop_x)
 
         try:
             path_length = min(path_length_xy, path_length_yx)
